@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Snake Game</title>
+  <style>
+    :root {
+      --bg: #0f1221;
+      --panel: #171a2d;
+      --text: #e9ecff;
+      --muted: #9ea7d8;
+      --snake: #48e26b;
+      --food: #ff4f7b;
+      --grid: #252a47;
+      --accent: #7aa2ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: radial-gradient(circle at top, #1a1f38, var(--bg));
+      color: var(--text);
+      padding: 16px;
+    }
+
+    .game-wrap {
+      width: min(92vw, 560px);
+      background: color-mix(in srgb, var(--panel), transparent 10%);
+      border: 1px solid #2c3155;
+      border-radius: 14px;
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+      padding: 14px;
+    }
+
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: #0f1327;
+      border: 1px solid #2a2f52;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 14px;
+    }
+
+    #board {
+      width: 100%;
+      max-width: 520px;
+      display: block;
+      margin: 0 auto;
+      background: #0c1022;
+      border: 1px solid #2b3158;
+      border-radius: 10px;
+      image-rendering: pixelated;
+    }
+
+    .help {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.35;
+      text-align: center;
+    }
+
+    .controls {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      max-width: 220px;
+      margin-inline: auto;
+      user-select: none;
+    }
+
+    button.ctrl {
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #2d335c;
+      background: #121631;
+      color: var(--text);
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button.ctrl:active { transform: translateY(1px); }
+
+    .spacer { visibility: hidden; }
+  </style>
+</head>
+<body>
+  <main class="game-wrap">
+    <div class="hud">
+      <div class="badge">Score: <strong id="score">0</strong></div>
+      <div class="badge">High Score: <strong id="high-score">0</strong></div>
+    </div>
+
+    <canvas id="board" width="520" height="520" aria-label="Snake game board"></canvas>
+
+    <p class="help">
+      Use <strong>Arrow Keys</strong> or <strong>WASD</strong> to move. Press <strong>Space</strong> to pause/resume, and <strong>R</strong> to restart.
+    </p>
+
+    <div class="controls" aria-hidden="true">
+      <span class="spacer">.</span>
+      <button class="ctrl" data-dir="up">▲</button>
+      <span class="spacer">.</span>
+      <button class="ctrl" data-dir="left">◀</button>
+      <button class="ctrl" data-dir="down">▼</button>
+      <button class="ctrl" data-dir="right">▶</button>
+    </div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('board');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const highScoreEl = document.getElementById('high-score');
+
+    const gridSize = 20;
+    const tileCount = canvas.width / gridSize;
+    const speedMs = 95;
+
+    let snake;
+    let direction;
+    let nextDirection;
+    let food;
+    let score;
+    let highScore = Number(localStorage.getItem('snake-high-score') || 0);
+    let loop;
+    let paused;
+    let gameOver;
+
+    highScoreEl.textContent = highScore;
+
+    function randomInt(max) {
+      return Math.floor(Math.random() * max);
+    }
+
+    function resetGame() {
+      snake = [{ x: 10, y: 10 }];
+      direction = { x: 1, y: 0 };
+      nextDirection = { x: 1, y: 0 };
+      score = 0;
+      paused = false;
+      gameOver = false;
+      scoreEl.textContent = score;
+      spawnFood();
+      draw();
+    }
+
+    function spawnFood() {
+      do {
+        food = { x: randomInt(tileCount), y: randomInt(tileCount) };
+      } while (snake.some(part => part.x === food.x && part.y === food.y));
+    }
+
+    function setDirection(newDir) {
+      if (newDir.x === -direction.x && newDir.y === -direction.y) return;
+      nextDirection = newDir;
+    }
+
+    function update() {
+      if (paused || gameOver) return;
+
+      direction = nextDirection;
+      const head = {
+        x: snake[0].x + direction.x,
+        y: snake[0].y + direction.y
+      };
+
+      if (
+        head.x < 0 ||
+        head.y < 0 ||
+        head.x >= tileCount ||
+        head.y >= tileCount ||
+        snake.some(part => part.x === head.x && part.y === head.y)
+      ) {
+        gameOver = true;
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem('snake-high-score', String(highScore));
+          highScoreEl.textContent = highScore;
+        }
+        return;
+      }
+
+      snake.unshift(head);
+
+      if (head.x === food.x && head.y === food.y) {
+        score += 1;
+        scoreEl.textContent = score;
+        spawnFood();
+      } else {
+        snake.pop();
+      }
+    }
+
+    function drawGrid() {
+      ctx.strokeStyle = '#252a47';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= tileCount; i += 1) {
+        const p = i * gridSize;
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, canvas.height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, p);
+        ctx.lineTo(canvas.width, p);
+        ctx.stroke();
+      }
+    }
+
+    function drawCell(x, y, color, radius = 4) {
+      const px = x * gridSize;
+      const py = y * gridSize;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.roundRect(px + 1.5, py + 1.5, gridSize - 3, gridSize - 3, radius);
+      ctx.fill();
+    }
+
+    function drawOverlay(title, subtitle) {
+      ctx.fillStyle = 'rgba(7, 10, 25, 0.75)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#e9ecff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '700 36px system-ui';
+      ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 20);
+      ctx.font = '500 18px system-ui';
+      ctx.fillStyle = '#b8c1f0';
+      ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 20);
+    }
+
+    function draw() {
+      ctx.fillStyle = '#0c1022';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      drawGrid();
+
+      drawCell(food.x, food.y, '#ff4f7b', 8);
+
+      snake.forEach((part, index) => {
+        const color = index === 0 ? '#7dff9b' : '#48e26b';
+        drawCell(part.x, part.y, color, 6);
+      });
+
+      if (paused && !gameOver) {
+        drawOverlay('Paused', 'Press Space to continue');
+      }
+
+      if (gameOver) {
+        drawOverlay('Game Over', 'Press R to restart');
+      }
+    }
+
+    function tick() {
+      update();
+      draw();
+    }
+
+    document.addEventListener('keydown', (event) => {
+      const key = event.key.toLowerCase();
+      if (['arrowup', 'w'].includes(key)) setDirection({ x: 0, y: -1 });
+      if (['arrowdown', 's'].includes(key)) setDirection({ x: 0, y: 1 });
+      if (['arrowleft', 'a'].includes(key)) setDirection({ x: -1, y: 0 });
+      if (['arrowright', 'd'].includes(key)) setDirection({ x: 1, y: 0 });
+
+      if (key === ' ') paused = !paused && !gameOver;
+      if (key === 'r') resetGame();
+    });
+
+    document.querySelectorAll('button.ctrl').forEach((button) => {
+      button.addEventListener('click', () => {
+        const dir = button.dataset.dir;
+        if (dir === 'up') setDirection({ x: 0, y: -1 });
+        if (dir === 'down') setDirection({ x: 0, y: 1 });
+        if (dir === 'left') setDirection({ x: -1, y: 0 });
+        if (dir === 'right') setDirection({ x: 1, y: 0 });
+      });
+    });
+
+    resetGame();
+    loop = setInterval(tick, speedMs);
+  </script>
+</body>
+</html>
